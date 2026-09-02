@@ -136,9 +136,7 @@
         <span style="margin-left:auto" id="radio-arrow">▾</span>
       </div>
       <div class="body">
-        <iframe id="radio-frame" title="Radio Latina"
-          data-src="https://open.spotify.com/embed/playlist/37i9dQZF1DX10zKzsJ2jva?theme=0"
-          loading="lazy" allow="encrypted-media; autoplay"></iframe>
+        <div id="radio-frame"></div>
       </div>
     </div>
     <div id="toast"></div>
@@ -594,14 +592,44 @@ document.getElementById("radar").addEventListener("click", () => {
   setTimeout(() => { m.openPopup(); toast.classList.remove("show"); }, 1800);
 });
 
-// radio: lazy-load the playlist iframe on first open
+// radio: open on load and start playing as soon as the browser allows.
+// Uses the Spotify iFrame API so we can call play(); browsers block audio until the first
+// user gesture, so we retry on the first pointerdown/keydown. If the API script fails to load,
+// fall back to a plain embed iframe.
 const radio = document.getElementById("radio");
+const RADIO_URI = "spotify:playlist:37i9dQZF1DX10zKzsJ2jva";
+radio.classList.add("open");
+document.getElementById("radio-arrow").textContent = "▴";
 radio.querySelector(".bar").addEventListener("click", () => {
   radio.classList.toggle("open");
   document.getElementById("radio-arrow").textContent = radio.classList.contains("open") ? "▴" : "▾";
-  const frame = document.getElementById("radio-frame");
-  if (radio.classList.contains("open") && !frame.src) frame.src = frame.dataset.src;
 });
+let radioCtrl = null;
+const tryPlay = () => { try { radioCtrl && radioCtrl.play(); } catch (e) {} };
+window.onSpotifyIframeApiReady = (IFrameAPI) => {
+  IFrameAPI.createController(document.getElementById("radio-frame"),
+    { uri: RADIO_URI, theme: 0, height: 152, width: "100%" },
+    (ctrl) => {
+      radioCtrl = ctrl;
+      ctrl.addListener("ready", tryPlay);
+      tryPlay();
+      const once = () => { tryPlay(); document.removeEventListener("pointerdown", once); document.removeEventListener("keydown", once); };
+      document.addEventListener("pointerdown", once);
+      document.addEventListener("keydown", once);
+    });
+};
+(() => {
+  const s = document.createElement("script");
+  s.src = "https://open.spotify.com/embed/iframe-api/v1";
+  s.async = true;
+  s.onerror = () => {
+    const f = document.createElement("iframe");
+    f.title = "Radio Latina"; f.allow = "encrypted-media; autoplay";
+    f.src = "https://open.spotify.com/embed/playlist/37i9dQZF1DX10zKzsJ2jva?theme=0";
+    document.getElementById("radio-frame").replaceWith(f);
+  };
+  document.head.appendChild(s);
+})();
 
 render();
 </script>
