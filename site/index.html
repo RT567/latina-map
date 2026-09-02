@@ -95,7 +95,11 @@
   @keyframes eq { 0%,100% { height: 4px; } 50% { height: 12px; } }
   #radio .body { display: none; }
   #radio.open .body { display: block; }
-  #radio iframe { display: block; border: 0; width: 100%; height: 152px; }
+  #radio .now { padding: 6px 12px 0; font-size: .8rem; opacity: .9; }
+  #radio .ctl { display: flex; gap: 6px; padding: 6px 12px 10px; }
+  #radio .ctl button { flex: 1; font-size: 1.1rem; padding: 4px 0; cursor: pointer;
+    background: transparent; color: inherit; border: 1px solid var(--accent); border-radius: 8px; }
+  #radio:not(.playing) .bar .eq i { animation-play-state: paused; height: 4px; }
   #toast {
     position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
     background: var(--accent); color: #fff; padding: 8px 18px; border-radius: 999px;
@@ -136,7 +140,9 @@
         <span style="margin-left:auto" id="radio-arrow">▾</span>
       </div>
       <div class="body">
-        <div id="radio-frame"></div>
+        <audio id="radio-audio" preload="none"></audio>
+        <div class="now"><span id="radio-now"></span></div>
+        <div class="ctl"><button id="radio-toggle" title="play / pause">⏯</button><button id="radio-next" title="next station">⏭</button></div>
       </div>
     </div>
     <div id="toast"></div>
@@ -592,44 +598,45 @@ document.getElementById("radar").addEventListener("click", () => {
   setTimeout(() => { m.openPopup(); toast.classList.remove("show"); }, 1800);
 });
 
-// radio: open on load and start playing as soon as the browser allows.
-// Uses the Spotify iFrame API so we can call play(); browsers block audio until the first
-// user gesture, so we retry on the first pointerdown/keydown. If the API script fails to load,
-// fall back to a plain embed iframe.
+// radio: free internet-radio streams (no ads, no 30s previews, no skipping) played with a plain
+// <radioAudio>. Station list from radio-browser.info, HTTPS streams only, probed 2026-09-02.
+// Browsers block radioAudio until the first user gesture, so we try on load and again on first
+// pointerdown/keydown. Bar click toggles the panel; ⏭ cycles stations; ⏯ pauses.
 const radio = document.getElementById("radio");
-const RADIO_URI = "spotify:playlist:37i9dQZF1DX10zKzsJ2jva";
+const RADIO_STATIONS = [
+  { name: "Radio Cumbia 90s (Bolivia)",       url: "https://emiteradio.com/proxy/cumbia90s?mp=/stream" },
+  { name: "Rádio MGT Brasil Hits",            url: "https://cast.mgtradio.net/radio/8030/aac" },
+  { name: "MGT Brega e Retrô (Brasil)",       url: "https://cast.mgtradio.net/radio/8060/aac" },
+  { name: "Top Merengue Radio (Rep. Dom.)",   url: "https://radio.dominiserver.com/proxy/topmerengueradio?mp=/stream" },
+  { name: "Colombia Crossover (champeta, cumbia, merengue)", url: "https://radio35.virtualtronics.com/proxy/colombiacrossover?mp=/;" },
+  { name: "Jovem Pan FM Floripa (Brasil)",    url: "https://live.paineldj.com.br/proxy/jfloripa?mp=/stream" },
+];
+let radioIdx = 0;
+const radioAudio = document.getElementById("radio-audio");
+const radioNowEl = document.getElementById("radio-now");
+radioAudio.volume = 0.6;
+function radioTune(i) {
+  radioIdx = (i + RADIO_STATIONS.length) % RADIO_STATIONS.length;
+  radioAudio.src = RADIO_STATIONS[radioIdx].url;
+  radioNowEl.textContent = RADIO_STATIONS[radioIdx].name;
+  radioTryPlay();
+}
+function radioTryPlay() { const p = radioAudio.play(); if (p && p.catch) p.catch(() => {}); }
 radio.classList.add("open");
 document.getElementById("radio-arrow").textContent = "▴";
 radio.querySelector(".bar").addEventListener("click", () => {
   radio.classList.toggle("open");
   document.getElementById("radio-arrow").textContent = radio.classList.contains("open") ? "▴" : "▾";
 });
-let radioCtrl = null;
-const tryPlay = () => { try { radioCtrl && radioCtrl.play(); } catch (e) {} };
-window.onSpotifyIframeApiReady = (IFrameAPI) => {
-  IFrameAPI.createController(document.getElementById("radio-frame"),
-    { uri: RADIO_URI, theme: 0, height: 152, width: "100%" },
-    (ctrl) => {
-      radioCtrl = ctrl;
-      ctrl.addListener("ready", tryPlay);
-      tryPlay();
-      const once = () => { tryPlay(); document.removeEventListener("pointerdown", once); document.removeEventListener("keydown", once); };
-      document.addEventListener("pointerdown", once);
-      document.addEventListener("keydown", once);
-    });
-};
-(() => {
-  const s = document.createElement("script");
-  s.src = "https://open.spotify.com/embed/iframe-api/v1";
-  s.async = true;
-  s.onerror = () => {
-    const f = document.createElement("iframe");
-    f.title = "Radio Latina"; f.allow = "encrypted-media; autoplay";
-    f.src = "https://open.spotify.com/embed/playlist/37i9dQZF1DX10zKzsJ2jva?theme=0";
-    document.getElementById("radio-frame").replaceWith(f);
-  };
-  document.head.appendChild(s);
-})();
+document.getElementById("radio-next").addEventListener("click", (e) => { e.stopPropagation(); radioTune(radioIdx + 1); });
+document.getElementById("radio-toggle").addEventListener("click", (e) => { e.stopPropagation(); radioAudio.paused ? radioTryPlay() : radioAudio.pause(); });
+radioAudio.addEventListener("error", () => radioTune(radioIdx + 1));   // dead stream → next one
+radioAudio.addEventListener("play",  () => radio.classList.add("playing"));
+radioAudio.addEventListener("pause", () => radio.classList.remove("playing"));
+const radioOnce = () => { if (radioAudio.paused) radioTryPlay(); document.removeEventListener("pointerdown", radioOnce); document.removeEventListener("keydown", radioOnce); };
+document.addEventListener("pointerdown", radioOnce);
+document.addEventListener("keydown", radioOnce);
+radioTune(0);
 
 render();
 </script>
