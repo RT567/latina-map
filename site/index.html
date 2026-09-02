@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latino Sydney — El Mapa</title>
+<meta name="description" content="Salsa, arepas y fútbol: a bilingual field guide to Latin Sydney. Real venues, real census data, questionable jokes.">
+<meta property="og:title" content="Latino Sydney — El Mapa">
+<meta property="og:description" content="Salsa, arepas y fútbol: a field guide to Latin Sydney 🌎💃🌮">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💃</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #14100e;
+    --panel: #1f1815;
+    --ink: #f5ede4;
+    --muted: #b8a89a;
+    --accent: #ff5d3a;
+    --accent2: #ffc53d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  header {
+    padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: linear-gradient(90deg, #2a1510, #1f1815);
+    border-bottom: 2px solid var(--accent);
+  }
+  header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .02em; }
+  header h1 span { color: var(--accent2); }
+  header .tagline { margin: 0; color: var(--muted); font-size: .85rem; flex: 1; }
+  .hbtn {
+    background: none; border: 1px solid var(--accent); color: var(--ink);
+    border-radius: 999px; padding: 4px 14px; cursor: pointer; font-size: .85rem;
+  }
+  .hbtn:hover { background: var(--accent); }
+  #main { flex: 1; display: flex; min-height: 0; position: relative; }
+  #map { flex: 1; background: #222; }
+  aside {
+    width: 270px; background: var(--panel); padding: 14px; overflow-y: auto;
+    border-left: 1px solid #332822; font-size: .9rem;
+  }
+  aside h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--muted); margin: 16px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .layer-toggle { display: flex; align-items: center; gap: 8px; padding: 5px 4px;
+    cursor: pointer; border-radius: 6px; user-select: none; }
+  .layer-toggle:hover { background: #2a211c; }
+  .layer-toggle input { accent-color: var(--accent); }
+  .count { margin-left: auto; color: var(--muted); font-size: .78rem; }
+  .event { padding: 7px 8px; border-radius: 8px; background: #2a211c; margin-bottom: 6px; }
+  .event b { display: block; font-size: .88rem; }
+  .event small { color: var(--muted); }
+  .event .day { color: var(--accent2); font-weight: 600; }
+  #phrase { padding: 10px; border: 1px dashed var(--accent); border-radius: 8px;
+    cursor: pointer; user-select: none; }
+  #phrase .es { font-weight: 700; color: var(--accent2); }
+  #phrase .en { color: var(--muted); font-size: .82rem; margin-top: 2px; }
+  #phrase .hint { color: #7a6c60; font-size: .7rem; margin-top: 6px; }
+  .note { margin-top: 14px; padding: 10px; background: #2a211c; border-radius: 8px;
+    color: var(--muted); font-size: .78rem; line-height: 1.45; }
+  .leaflet-popup-content-wrapper { background: var(--panel); color: var(--ink);
+    border-radius: 10px; }
+  .leaflet-popup-tip { background: var(--panel); }
+  .popup-cat { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--accent2); }
+  .popup-name { font-weight: 700; font-size: 1rem; margin: 2px 0; }
+  .popup-blurb { color: var(--muted); font-size: .85rem; }
+  .char-pin { filter: drop-shadow(0 2px 3px rgba(0,0,0,.7)); transform-origin: 50% 90%; }
+  .char-pin.groove { animation: groove 1.1s ease-in-out infinite; }
+  .char-pin.groove2 { animation: groove 0.9s ease-in-out infinite reverse; }
+  @keyframes groove {
+    0%, 100% { transform: rotate(-7deg); }
+    50% { transform: rotate(7deg) translateY(-2px); }
+  }
+  .emoji-pin { font-size: 22px; line-height: 22px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+  .emoji-pin.small { font-size: 15px; line-height: 15px; opacity: .9; }
+  /* dark-mode the OSM raster tiles (no API key needed, unlike CARTO/Mapbox) */
+  .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(.85) contrast(1.05); }
+
+  #radio {
+    position: absolute; left: 12px; bottom: 24px; z-index: 900;
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 12px;
+    overflow: hidden; width: 300px; box-shadow: 0 4px 18px rgba(0,0,0,.5);
+  }
+  #radio .bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    cursor: pointer; user-select: none; font-size: .85rem; }
+  #radio .bar .eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+  #radio .bar .eq i { width: 3px; background: var(--accent2); display: inline-block;
+    animation: eq 0.8s ease-in-out infinite; }
+  #radio .bar .eq i:nth-child(2) { animation-delay: .2s; }
+  #radio .bar .eq i:nth-child(3) { animation-delay: .4s; }
+  @keyframes eq { 0%,100% { height: 4px; } 50% { height: 12px; } }
+  #radio .body { display: none; }
+  #radio.open .body { display: block; }
+  #radio iframe { display: block; border: 0; width: 100%; height: 152px; }
+  #toast {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #fff; padding: 8px 18px; border-radius: 999px;
+    font-weight: 600; z-index: 950; opacity: 0; transition: opacity .3s;
+    pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.4); font-size: .9rem;
+  }
+  #toast.show { opacity: 1; }
+  @media (max-width: 640px) {
+    #main { flex-direction: column; }
+    aside { width: 100%; max-height: 42%; border-left: none; border-top: 1px solid #332822; }
+    #radio { width: 250px; bottom: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🌎 Latino Sydney — <span>El Mapa</span></h1>
+    <p class="tagline" data-i18n="tagline"></p>
+    <button id="radar" class="hbtn"></button>
+    <button id="lang-toggle" class="hbtn"></button>
+  </header>
+  <div id="main">
+    <div id="map"></div>
+    <aside>
+      <h2 data-i18n="phrasebook"></h2>
+      <div id="phrase"></div>
+      <h2 data-i18n="weekend"></h2>
+      <div id="events"></div>
+      <h2 data-i18n="layers"></h2>
+      <div id="layers"></div>
+      <div class="note" data-i18n="note"></div>
+    </aside>
+    <div id="radio">
+      <div class="bar">
+        <span class="eq"><i></i><i></i><i></i></span>
+        <b data-i18n="radio"></b>
+        <span style="margin-left:auto" id="radio-arrow">▾</span>
+      </div>
+      <div class="body">
+        <iframe id="radio-frame" title="Radio Latina"
+          data-src="https://open.spotify.com/embed/playlist/37i9dQZF1DX10zKzsJ2jva?theme=0"
+          loading="lazy" allow="encrypted-media; autoplay"></iframe>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script src="curated.js"></script>
+<script src="densitydata.js"></script>
+<script>
+// ---------- i18n ----------
+const I18N = {
+  en: {
+    tagline: "salsa, arepas y fútbol: a field guide to Latin Sydney",
+    layers: "Layers", weekend: "This weekend", phrasebook: "Phrasebook",
+    toggle: "ES 🌶️", phraseHint: "tap for another phrase",
+    radio: "Radio Latina", radar: "📡 Empanada radar",
+    radarToast: "📡 Empanada source detected!",
+    note: "All real data: venues from OpenStreetMap + community directories, crowds & heat from the 2021 ABS Census (Spanish & Portuguese speakers per suburb), events from the venues' own calendars. Curated pin locations are suburb-level approximations.",
+    cats: { dance: "Salsa & dance", food: "Restaurants & bakeries",
+      grocery: "Grocers & butchers", futbol: "Fútbol", event: "Events & festivals",
+      culture: "Culture & community", beach: "Beaches", transport: "Trains",
+      density: "Fiesta density", census: "Census heat" },
+  },
+  es: {
+    tagline: "salsa, arepas y fútbol: la guía del Sídney latino",
+    layers: "Capas", weekend: "Este finde", phrasebook: "Frases",
+    toggle: "EN 🦘", phraseHint: "toca para otra frase",
+    radio: "Radio Latina", radar: "📡 Radar de empanadas",
+    radarToast: "📡 ¡Fuente de empanadas detectada!",
+    note: "Todo con datos reales: lugares de OpenStreetMap y directorios comunitarios, multitudes y calor del Censo 2021 (hablantes de español y portugués por barrio), eventos de los calendarios de cada lugar. Los pines curados son aproximados a nivel barrio.",
+    cats: { dance: "Salsa y baile", food: "Restaurantes y panaderías",
+      grocery: "Tiendas y carnicerías", futbol: "Fútbol", event: "Eventos y festivales",
+      culture: "Cultura y comunidad", beach: "Playas", transport: "Trenes",
+      density: "Densidad de fiesta", census: "Calor censal" },
+  },
+};
+let lang = "en";
+
+// ---------- tiny SVG people ----------
+// hand-drawn chibi crew: big heads, tiny bodies, maximum groove
+function svgWrap(inner, w) {
+  return `<svg class="char-pin" width="${w}" height="${w * 1.4}" viewBox="0 0 40 56"
+    xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+const CHARS = {
+  // salsa dancer, red dress, arm up
+  dancer: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <path d="M20 28 L12 48 Q20 52 28 48 Z" fill="#e0263c"/>
+    <rect x="17.5" y="24" width="5" height="8" rx="2.4" fill="#e0263c"/>
+    <path d="M18 27 Q10 24 8 16" stroke="#b5764a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M22 27 Q30 30 33 36" stroke="#b5764a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <circle cx="8" cy="15" r="2" fill="#b5764a"/>
+    <circle cx="33.5" cy="37" r="2" fill="#b5764a"/>
+    <path d="M15 48 L14 53 M25 48 L26 53" stroke="#b5764a" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="20" cy="15" r="8.5" fill="#c98a5b"/>
+    <path d="M12 13 Q13 5 20 5.5 Q28 5 28.5 14 Q28 9 24 8 Q16 7 12 13" fill="#2b1a12"/>
+    <circle cx="27" cy="9" r="2.5" fill="#e0263c"/>
+    <circle cx="17.4" cy="15" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="15" r="1.1" fill="#241812"/>
+    <path d="M17.5 19 Q20 21 22.5 19" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // maracas guy, purple shirt
+  maracas: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="14" y="26" width="12" height="15" rx="4" fill="#7b3fbf"/>
+    <path d="M15 28 Q7 25 6 18 M25 28 Q33 25 34 18" stroke="#8a5a3b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <ellipse cx="6" cy="15" rx="3" ry="3.6" fill="#ffc53d"/>
+    <ellipse cx="34" cy="15" rx="3" ry="3.6" fill="#3ecf6a"/>
+    <path d="M16 41 L15 52 M24 41 L25 52" stroke="#26364f" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="20" cy="16" r="8.5" fill="#a06a42"/>
+    <path d="M11.5 15 Q12 6 20 6 Q28 6 28.5 15 L28 11 Q24 8 20 8.5 Q15 8 12 12 Z" fill="#141414"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#241812"/>
+    <path d="M16.8 19.5 Q20 22.5 23.2 19.5" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+    <path d="M15.5 12.5 Q17 11.5 18.5 12.5" stroke="#241812" stroke-width="1" fill="none"/>`,
+  // trumpeter with hat
+  trumpet: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="14" y="27" width="12" height="14" rx="4" fill="#1e2d50"/>
+    <path d="M14.5 41 L14 52 M25.5 41 L26 52" stroke="#141d33" stroke-width="4" stroke-linecap="round"/>
+    <path d="M24 31 Q30 29 33 26" stroke="#8a5a3b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <rect x="27" y="20" width="10" height="3" rx="1.5" fill="#ffc53d" transform="rotate(18 27 20)"/>
+    <path d="M36 25 l4 -3 l0 7 z" fill="#ffc53d"/>
+    <circle cx="20" cy="16" r="8.5" fill="#8a5a3b"/>
+    <ellipse cx="20" cy="9" rx="12" ry="3" fill="#241812"/>
+    <path d="M14 9 Q15 3 20 3 Q25 3 26 9" fill="#241812"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#180f0a"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#180f0a"/>
+    <ellipse cx="21" cy="20" rx="1.8" ry="1.3" fill="#180f0a"/>`,
+  // futbolista, striped shirt, ball
+  futbol: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="14" y="26" width="12" height="14" rx="4" fill="#fff"/>
+    <rect x="16.5" y="26" width="2.6" height="14" fill="#75b8ff"/>
+    <rect x="21.2" y="26" width="2.6" height="14" fill="#75b8ff"/>
+    <path d="M15 28 Q9 32 9 37 M25 28 Q31 32 31 37" stroke="#c98a5b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M16 40 L14 50 M24 40 L27 47" stroke="#c98a5b" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="30" cy="49" r="4.5" fill="#fff"/>
+    <path d="M30 46 l1.8 1.3 l-.7 2.1 l-2.2 0 l-.7 -2.1 Z" fill="#222"/>
+    <circle cx="20" cy="16" r="8.5" fill="#c98a5b"/>
+    <path d="M12 14 Q13 6 20 6 Q27 6 28 14 Q26 9 20 9 Q14 9 12 14" fill="#3a2415"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#241812"/>
+    <path d="M17 19.5 Q20 21.5 23 19.5" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // empanada vendor with tray
+  vendor: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="14" y="26" width="12" height="15" rx="4" fill="#e8e4da"/>
+    <rect x="15.5" y="30" width="9" height="10" rx="1.5" fill="#c96f2e"/>
+    <path d="M15 41 L14.5 52 M25 41 L25.5 52" stroke="#5a4632" stroke-width="4" stroke-linecap="round"/>
+    <path d="M14.5 29 Q9 31 8 35 M25.5 29 Q31 31 32 35" stroke="#a06a42" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <rect x="5" y="35" width="30" height="3" rx="1.5" fill="#8a5a3b"/>
+    <path d="M10 34.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <path d="M17.5 34.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <path d="M25 34.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <circle cx="20" cy="16" r="8.5" fill="#a06a42"/>
+    <path d="M11.5 16 Q11 6 20 6 Q29 6 28.5 16 L27.5 11 Q24 8.5 20 8.5 Q16 8.5 12.5 11 Z" fill="#4a2f1d"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#241812"/>
+    <path d="M16.8 19.5 Q20 22 23.2 19.5" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // surfer with board
+  surfista: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="26" y="8" width="7" height="40" rx="3.5" fill="#2fb1a5" transform="rotate(6 29 28)"/>
+    <path d="M29 12 L30 44" stroke="#f5ede4" stroke-width="1.4" transform="rotate(6 29 28)"/>
+    <path d="M20 27 L14 47 Q20 50 26 47 L24 34 Z" fill="#ff8fb1"/>
+    <rect x="16.5" y="24" width="7" height="9" rx="3" fill="#e0263c"/>
+    <path d="M17 27 Q11 30 10 35 M23 27 Q27 30 28 34" stroke="#c98a5b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M16 47 L15 53 M24 47 L25 53" stroke="#c98a5b" stroke-width="2.8" stroke-linecap="round"/>
+    <circle cx="20" cy="15" r="8.5" fill="#c98a5b"/>
+    <path d="M11.5 14 Q12 5 20 5 Q28 5 28.5 14 Q29 22 26 25 Q28 16 26 11 Q22 8 16 9 Q13 12 13.5 20 Q12 22 11.5 14" fill="#2b1a12"/>
+    <circle cx="13" cy="10" r="2.4" fill="#ffc53d"/>
+    <rect x="14.8" y="13.2" width="4.4" height="3.2" rx="1.5" fill="#111"/>
+    <rect x="20.8" y="13.2" width="4.4" height="3.2" rx="1.5" fill="#111"/>
+    <path d="M19.2 14.5 h1.6" stroke="#111" stroke-width="1"/>
+    <path d="M17 19.5 Q20 21.8 23 19.5" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // chef with empanada tray
+  chef: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <path d="M20 26 L12 49 Q20 53 28 49 Z" fill="#e0263c"/>
+    <path d="M14.5 42 h11" stroke="#ffc53d" stroke-width="1.4"/>
+    <rect x="16.5" y="24" width="7" height="8" rx="3" fill="#f5ede4"/>
+    <path d="M17 27 Q10 29 8.5 33 M23 27 Q30 29 31.5 33" stroke="#b5764a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <rect x="4.5" y="33" width="31" height="3" rx="1.5" fill="#8a5a3b"/>
+    <path d="M9 32.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <path d="M17 32.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <path d="M25 32.5 a3 3 0 0 1 6 0 z" fill="#ffc53d"/>
+    <circle cx="20" cy="15" r="8.5" fill="#b5764a"/>
+    <path d="M11.5 15 Q11 5 20 5.5 Q29 5 28.5 15 Q29 23 26.5 26 Q28 16 26 10.5 Q21 8 14.5 10 Q12 15 13.5 21 Q12 23 11.5 15" fill="#3a2415"/>
+    <circle cx="27" cy="9.5" r="2.4" fill="#ff8fb1"/>
+    <circle cx="17.4" cy="15" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="15" r="1.1" fill="#241812"/>
+    <path d="M16.8 19 Q20 21.6 23.2 19" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // sonera with maracas up
+  sonera: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <path d="M20 28 L10 48 Q20 53 30 48 Z" fill="#7b3fbf"/>
+    <path d="M13 44 Q20 48 27 44" stroke="#ffc53d" stroke-width="1.6" fill="none"/>
+    <path d="M11.5 47 Q20 51 28.5 47" stroke="#2fb1a5" stroke-width="1.6" fill="none"/>
+    <rect x="16.5" y="24" width="7" height="8" rx="3" fill="#ffc53d"/>
+    <path d="M17 26 Q9 22 7.5 16 M23 26 Q31 22 32.5 16" stroke="#a06a42" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <ellipse cx="7" cy="13" rx="3" ry="3.6" fill="#e0263c"/>
+    <ellipse cx="33" cy="13" rx="3" ry="3.6" fill="#2fb1a5"/>
+    <circle cx="20" cy="16" r="8.5" fill="#a06a42"/>
+    <path d="M11.5 16 Q11 6 20 6 Q29 6 28.5 16 Q29 24 26 27 Q28 17 26 11 Q21 8.5 14.5 10.5 Q12 16 14 22 Q12 24 11.5 16" fill="#141414"/>
+    <circle cx="26.5" cy="10" r="2.4" fill="#ffc53d"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#241812"/>
+    <path d="M16.8 19.8 Q20 22.5 23.2 19.8" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // trumpetista
+  trumpetista: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <path d="M20 27 L13 49 Q20 52 27 49 Z" fill="#1e2d50"/>
+    <path d="M15.5 44 h9" stroke="#ffc53d" stroke-width="1.3"/>
+    <rect x="16.5" y="24" width="7" height="8" rx="3" fill="#1e2d50"/>
+    <path d="M23 30 Q29 28 32.5 25.5" stroke="#8a5a3b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <rect x="26.5" y="19.5" width="10" height="3" rx="1.5" fill="#ffc53d" transform="rotate(18 26.5 19.5)"/>
+    <path d="M35.5 24.5 l4 -3 l0 7 z" fill="#ffc53d"/>
+    <circle cx="20" cy="16" r="8.5" fill="#8a5a3b"/>
+    <path d="M11.5 16 Q11 6 20 6 Q29 6 28.5 16 Q29 23 26.5 26 Q28 16 26 11 Q21 8.5 14.5 10.5 Q12.5 15 14 21 Q12 23 11.5 16" fill="#241812"/>
+    <circle cx="14" cy="10.5" r="2.2" fill="#e0263c"/>
+    <circle cx="17.4" cy="16" r="1.1" fill="#180f0a"/>
+    <circle cx="22.6" cy="16" r="1.1" fill="#180f0a"/>
+    <ellipse cx="21.5" cy="20" rx="1.8" ry="1.3" fill="#180f0a"/>`,
+  // futbolista with ball
+  futbolista: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <rect x="14" y="25" width="12" height="13" rx="4" fill="#fff"/>
+    <rect x="16.5" y="25" width="2.6" height="13" fill="#75b8ff"/>
+    <rect x="21.2" y="25" width="2.6" height="13" fill="#75b8ff"/>
+    <rect x="15" y="37" width="10" height="5" rx="2" fill="#1e2d50"/>
+    <path d="M15 27 Q9 31 9 36 M25 27 Q31 31 31 36" stroke="#c98a5b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M16.5 42 L14.5 51 M23.5 42 L26.5 48" stroke="#c98a5b" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="29.5" cy="50" r="4.5" fill="#fff"/>
+    <path d="M29.5 47 l1.8 1.3 l-.7 2.1 l-2.2 0 l-.7 -2.1 Z" fill="#222"/>
+    <circle cx="20" cy="15" r="8.5" fill="#c98a5b"/>
+    <path d="M12 14 Q12.5 5.5 20 5.5 Q27.5 5.5 28 14 Q27 10 24 8.5 Q17 7.5 13.5 11 Q12.5 12 12 14" fill="#3a2415"/>
+    <path d="M27 11 Q31 14 30 22 Q28.5 24 28 21 Q29 15 26.5 12.5 Z" fill="#3a2415"/>
+    <circle cx="30" cy="22.5" r="1.6" fill="#e0263c"/>
+    <circle cx="17.4" cy="15" r="1.1" fill="#241812"/>
+    <circle cx="22.6" cy="15" r="1.1" fill="#241812"/>
+    <path d="M17 19 Q20 21.4 23 19" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // beach kid with floatie
+  beach: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <circle cx="20" cy="36" r="10" fill="#ff8fb1"/>
+    <circle cx="20" cy="36" r="5.5" fill="#14100e" opacity="0"/>
+    <path d="M12 33 a10 10 0 0 1 16 0" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="4 4"/>
+    <rect x="17" y="24" width="6" height="9" rx="3" fill="#2fb1a5"/>
+    <path d="M16 45 L15 52 M24 45 L25 52" stroke="#c98a5b" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="15" r="8.5" fill="#c98a5b"/>
+    <path d="M12 12 Q14 5 20 5 Q26 5 28 12 Q24 8 20 8.5 Q16 8 12 12" fill="#241812"/>
+    <rect x="14.5" y="13" width="4.6" height="3.4" rx="1.6" fill="#111"/>
+    <rect x="20.9" y="13" width="4.6" height="3.4" rx="1.6" fill="#111"/>
+    <path d="M19.1 14.4 h1.8" stroke="#111" stroke-width="1"/>
+    <path d="M17 19.5 Q20 21.8 23 19.5" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+  // abuela with mate
+  abuela: `
+    <ellipse cx="20" cy="53" rx="9" ry="2.5" fill="rgba(0,0,0,.35)"/>
+    <path d="M20 26 L11 49 Q20 53 29 49 Z" fill="#4a7a4f"/>
+    <circle cx="16" cy="38" r="1.4" fill="#ffc53d"/>
+    <circle cx="23" cy="43" r="1.4" fill="#ff8fb1"/>
+    <circle cx="20" cy="34" r="1.4" fill="#fff"/>
+    <path d="M17 28 Q10 30 9 35 M23 28 Q29 30 30 34" stroke="#b5764a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M28 32 v3" stroke="#8a5a3b" stroke-width="1.6"/>
+    <ellipse cx="30" cy="36.5" rx="2.6" ry="3" fill="#6b4a2f"/>
+    <circle cx="20" cy="15" r="8.5" fill="#b5764a"/>
+    <path d="M12 14 Q12 6 20 6 Q28 6 28 14 Q26 9 20 9 Q14 9 12 14" fill="#cfd2d6"/>
+    <circle cx="20" cy="6.5" r="3" fill="#cfd2d6"/>
+    <circle cx="17.4" cy="15" r="1.05" fill="#241812"/>
+    <circle cx="22.6" cy="15" r="1.05" fill="#241812"/>
+    <path d="M15.6 13 q1.8 -1.4 3.4 0 M21 13 q1.8 -1.4 3.4 0" stroke="#555" stroke-width=".9" fill="none"/>
+    <path d="M17 19 Q20 21 23 19" stroke="#241812" stroke-width="1.1" fill="none" stroke-linecap="round"/>`,
+};
+const DENSITY_CAST = ["dancer", "maracas", "trumpet", "futbol", "vendor", "abuela"];
+const CAT_CHAR = { dance: "dancer", food: "chef", grocery: "abuela", futbol: "futbolista",
+  event: "trumpetista", culture: "sonera", beach: "surfista", transport: null, density: "maracas" };
+const CAT_EMOJI = { dance: "💃", food: "🌮", grocery: "🛒", futbol: "⚽",
+  event: "🎉", culture: "🎭", beach: "🏖️", transport: "🚆", density: "🕺",
+  census: "🌶️" };
+
+// Dance-floor phrasebook — cheeky, not creepy.
+const PHRASES = [
+  { es: "¿Bailamos?", en: "Shall we dance?" },
+  { es: "¿Dónde está la fiesta este finde?", en: "Where's the party this weekend?" },
+  { es: "Tranqui, es mi primera clase de salsa.", en: "Relax, it's my first salsa class." },
+  { es: "Otra ronda de empanadas, por favor.", en: "Another round of empanadas, please." },
+  { es: "¡Qué buena onda este lugar!", en: "This place has great vibes!" },
+  { es: "Perdón por pisarte, sigo aprendiendo bachata.", en: "Sorry for stepping on you, still learning bachata." },
+  { es: "El asado lo hago yo el domingo.", en: "I'm doing the barbecue on Sunday." },
+  { es: "Sin música no hay mapa.", en: "No music, no map." },
+];
+
+// ---------- DATA ----------
+// Venues: hand-curated list (curated.js) + real OSM pulls (data.js).
+const PLACES = ((window.CURATED || {}).places || []).concat(window.OSM_PLACES || []);
+
+const BEACHES = [
+  { name: "Bondi", lat: -33.8908, lng: 151.2743 },
+  { name: "Bronte", lat: -33.9036, lng: 151.2699 },
+  { name: "Coogee", lat: -33.9205, lng: 151.2576 },
+  { name: "Maroubra", lat: -33.9500, lng: 151.2570 },
+  { name: "Manly", lat: -33.7971, lng: 151.2878 },
+  { name: "Balmoral", lat: -33.8270, lng: 151.2510 },
+  { name: "Cronulla", lat: -34.0587, lng: 151.1526 },
+  { name: "Palm Beach", lat: -33.5990, lng: 151.3230 },
+];
+
+const STATIONS = [
+  { name: "Central", lat: -33.8832, lng: 151.2070 },
+  { name: "Town Hall", lat: -33.8735, lng: 151.2065 },
+  { name: "Bondi Junction", lat: -33.8915, lng: 151.2480 },
+  { name: "Parramatta", lat: -33.8170, lng: 151.0040 },
+  { name: "Fairfield", lat: -33.8720, lng: 150.9570 },
+  { name: "Liverpool", lat: -33.9245, lng: 150.9250 },
+];
+
+const EVENTS = (window.CURATED || {}).events || [];
+
+// Suburb roasts shown on census-crowd popups (defaults apply elsewhere).
+const ROASTS = {
+  "Fairfield": { en: "the OG heartland — first wave, best empanadas", es: "el corazón original — primera ola, mejores empanadas" },
+  "Fairfield West": { en: "the heartland's heartland", es: "el corazón del corazón" },
+  "Liverpool": { en: "Sunday futsal never actually ends here", es: "acá el futsal del domingo nunca termina" },
+  "Bondi": { en: "technically a suburb of Rio", es: "técnicamente un barrio de Río" },
+  "Bondi Beach": { en: "technically a suburb of Rio (beach branch)", es: "técnicamente un barrio de Río (sucursal playa)" },
+  "Maroubra": { en: "the Brazilian surfers' embassy", es: "la embajada de los surfistas brasileños" },
+  "Dee Why": { en: "Rio's northern beaches consulate", es: "el consulado playero de Río en el norte" },
+  "Marrickville": { en: "Little Portugal with a reggaeton remix", es: "la Pequeña Portugal con remix de reggaetón" },
+  "Petersham": { en: "Little Portugal, the original pressing", es: "la Pequeña Portugal, edición original" },
+  "Mascot": { en: "closest empanadas to the airport", es: "las empanadas más cerca del aeropuerto" },
+  "Coogee": { en: "backpacker cumbia zone", es: "zona de cumbia mochilera" },
+  "Randwick": { en: "study visa, salsa shoes", es: "visa de estudiante, zapatos de salsa" },
+  "Wolli Creek": { en: "vertical Latin America", es: "Latinoamérica en vertical" },
+  "Waterloo": { en: "new towers, old cumbias", es: "torres nuevas, cumbias viejas" },
+};
+const ROAST_DEFAULT = { en: "confirmed fiesta activity (per the census)", es: "actividad de fiesta confirmada (según el censo)" };
+// ----------------------------------------------------------------------
+
+const map = L.map("map").setView([-33.87, 151.05], 11);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+function charIcon(name, size, groove) {
+  const cls = groove ? (Math.random() < .5 ? "groove" : "groove2") : "";
+  const html = svgWrap(CHARS[name], size).replace('class="char-pin"', `class="char-pin ${cls}"`);
+  return L.divIcon({ className: "", html, iconSize: [size, size * 1.4],
+    iconAnchor: [size / 2, size * 1.3] });
+}
+function emojiIcon(emoji, small) {
+  return L.divIcon({ className: "",
+    html: `<div class="emoji-pin${small ? " small" : ""}">${emoji}</div>`,
+    iconSize: small ? [15, 15] : [22, 22], iconAnchor: small ? [8, 8] : [11, 11] });
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const groups = {};
+for (const key of Object.keys(CAT_EMOJI)) groups[key] = L.layerGroup().addTo(map);
+const markers = [];
+const foodMarkers = [];
+
+function addMarker(cat, lat, lng, icon, build) {
+  const m = L.marker([lat, lng], { icon }).addTo(groups[cat]);
+  markers.push({ marker: m, build });
+  return m;
+}
+
+for (const p of PLACES) {
+  const icon = CAT_CHAR[p.cat] ? charIcon(CAT_CHAR[p.cat], 34) : emojiIcon(CAT_EMOJI[p.cat]);
+  const m = addMarker(p.cat, p.lat, p.lng, icon, l =>
+    `<div class="popup-cat">${CAT_EMOJI[p.cat]} ${I18N[l].cats[p.cat]} · ${p.suburb}</div>
+     <div class="popup-name">${p.name}</div>
+     <div class="popup-blurb">${p.blurb[l]}</div>`);
+  if (p.cat === "food" || p.cat === "grocery") foodMarkers.push(m);
+}
+for (const b of BEACHES) {
+  L.circle([b.lat, b.lng], { radius: 420, color: "#ffc53d", weight: 1.5,
+    fillColor: "#ffc53d", fillOpacity: 0.18 }).addTo(groups.beach);
+  addMarker("beach", b.lat, b.lng, charIcon("surfista", 30), l =>
+    `<div class="popup-cat">🏖️ ${I18N[l].cats.beach}</div>
+     <div class="popup-name">${b.name}</div>`);
+}
+for (const s of STATIONS) {
+  addMarker("transport", s.lat, s.lng, emojiIcon("🚆", true), l =>
+    `<div class="popup-cat">🚆 ${I18N[l].cats.transport}</div>
+     <div class="popup-name">${s.name}</div>`);
+}
+(window.CENSUS_SCATTER || []).forEach((d, i) => {
+  const rand = mulberry32(i * 1337 + 7);
+  const roast = ROASTS[d.suburb] || ROAST_DEFAULT;
+  const stats = l => l === "es"
+    ? `${d.es} hablantes de español · ${d.pt} de portugués (Censo 2021)`
+    : `${d.es} Spanish + ${d.pt} Portuguese speakers (2021 census)`;
+  for (let k = 0; k < d.n; k++) {
+    const ang = rand() * Math.PI * 2;
+    const dist = Math.sqrt(rand()) * 0.009;
+    const who = DENSITY_CAST[Math.floor(rand() * DENSITY_CAST.length)];
+    addMarker("density", d.lat + Math.sin(ang) * dist, d.lng + Math.cos(ang) * dist * 1.2,
+      charIcon(who, 24, true), l =>
+      `<div class="popup-cat">🕺 ${I18N[l].cats.density}</div>
+       <div class="popup-name">${d.suburb}</div>
+       <div class="popup-blurb">${roast[l]}<br><small>${stats(l)}</small></div>`);
+  }
+});
+
+// census choropleth: Spanish+Portuguese speakers per suburb (ABS 2021, G13 SAL)
+fetch("census.json").then(r => r.json()).then(gj => {
+  const color = t => t > 800 ? "#b30021" : t > 400 ? "#e0263c" : t > 200 ? "#ff5d3a"
+    : t > 100 ? "#ff9d3a" : "#ffc53d";
+  L.geoJSON(gj, {
+    style: f => {
+      const t = f.properties.spanish + f.properties.portuguese;
+      return { color: "#ffc53d", weight: .4, opacity: .2,
+        fillColor: color(t), fillOpacity: Math.min(.28, .04 + t / 3500) };
+    },
+    onEachFeature: (f, layer) => {
+      const p = f.properties;
+      markers.push({ marker: layer, build: l => l === "es"
+        ? `<div class="popup-cat">🌶️ Censo 2021</div><div class="popup-name">${p.name}</div>
+           <div class="popup-blurb">${p.spanish} hablantes de español · ${p.portuguese} de portugués<br>
+           nacidos en Brasil: ${p.brazil} · en Chile: ${p.chile}</div>`
+        : `<div class="popup-cat">🌶️ Census 2021</div><div class="popup-name">${p.name}</div>
+           <div class="popup-blurb">${p.spanish} Spanish + ${p.portuguese} Portuguese speakers<br>
+           born in Brazil: ${p.brazil} · in Chile: ${p.chile}</div>` });
+    },
+  }).addTo(groups.census);
+  window.__censusCount = gj.features.length;
+  render();
+}).catch(() => {});
+
+// ---------- UI ----------
+let phraseIdx = 0;
+function render() {
+  const t = I18N[lang];
+  document.documentElement.lang = lang;
+  for (const el of document.querySelectorAll("[data-i18n]"))
+    el.textContent = t[el.dataset.i18n];
+  document.getElementById("lang-toggle").textContent = t.toggle;
+  document.getElementById("radar").textContent = t.radar;
+
+  const ph = PHRASES[phraseIdx % PHRASES.length];
+  document.getElementById("phrase").innerHTML =
+    `<div class="es">“${ph.es}”</div><div class="en">${ph.en}</div>
+     <div class="hint">${t.phraseHint}</div>`;
+
+  document.getElementById("events").innerHTML = EVENTS.map(e =>
+    `<div class="event"><b>${e.name}</b>
+     <small><span class="day">${e.day[lang]}</span> · ${e.venue} · ${e.suburb}</small></div>`
+  ).join("");
+
+  const layersEl = document.getElementById("layers");
+  layersEl.innerHTML = "";
+  for (const [key, emoji] of Object.entries(CAT_EMOJI)) {
+    const row = document.createElement("label");
+    row.className = "layer-toggle";
+    row.innerHTML = `<input type="checkbox" ${map.hasLayer(groups[key]) ? "checked" : ""}>
+      <span>${emoji} ${t.cats[key]}</span>
+      <span class="count">${key === "census" ? (window.__censusCount || "…") : groups[key].getLayers().length}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? map.addLayer(groups[key]) : map.removeLayer(groups[key]);
+    });
+    layersEl.appendChild(row);
+  }
+  for (const { marker, build } of markers) marker.bindPopup(build(lang));
+}
+document.getElementById("lang-toggle").addEventListener("click", () => {
+  lang = lang === "en" ? "es" : "en"; render();
+});
+document.getElementById("phrase").addEventListener("click", () => {
+  phraseIdx++; render();
+});
+
+// empanada radar: fly to a random food spot
+document.getElementById("radar").addEventListener("click", () => {
+  if (!foodMarkers.length) return;
+  const m = foodMarkers[Math.floor(Math.random() * foodMarkers.length)];
+  map.flyTo(m.getLatLng(), 15, { duration: 1.6 });
+  const toast = document.getElementById("toast");
+  toast.textContent = I18N[lang].radarToast;
+  toast.classList.add("show");
+  setTimeout(() => { m.openPopup(); toast.classList.remove("show"); }, 1800);
+});
+
+// radio: lazy-load the playlist iframe on first open
+const radio = document.getElementById("radio");
+radio.querySelector(".bar").addEventListener("click", () => {
+  radio.classList.toggle("open");
+  document.getElementById("radio-arrow").textContent = radio.classList.contains("open") ? "▴" : "▾";
+  const frame = document.getElementById("radio-frame");
+  if (radio.classList.contains("open") && !frame.src) frame.src = frame.dataset.src;
+});
+
+render();
+</script>
+</body>
+</html>
